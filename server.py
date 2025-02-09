@@ -123,7 +123,6 @@ def mark_messages_as_delivered(phone_number):
         conn.commit()
 
 # === Endpoints with Hash Verification ===
-
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
@@ -154,8 +153,9 @@ def register():
         cursor.execute("INSERT INTO clients (phone_number, public_key) VALUES (?, ?)", (phone_number, public_key))
         conn.commit()
     
+    logging.debug(f"Registered client {phone_number} with public key: {public_key}")
     return jsonify({"status": "success", "message": "Registration successful."})
-
+    
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
@@ -244,14 +244,20 @@ def verify():
         return jsonify({"status": "success", "message": "Authentication successful."})
     except (ValueError, TypeError):
         return jsonify({"status": "error", "message": "Signature verification failed."}), 401
+
 @app.route("/send-message", methods=["POST"])
 def send_message():
     data = request.json
-    sender = data.get("sender_phone")
-    recipient = data.get("recipient_phone")
-    encrypted_message = data.get("encrypted_message")
-    signature = data.get("signature")
+    sender = b64decode(data.get("sender_phone")).decode()
+    recipient = b64decode(data.get("recipient_phone")).decode()
+    encrypted_message = b64decode(data.get("encrypted_message"))
+    signature = b64decode(data.get("signature"))
     received_hash = data.get("hash")
+
+    # Log the encrypted message and its hash
+    logging.debug(f"Received encrypted message: {b64encode(encrypted_message).decode()}")
+    logging.debug(f"Received hash: {received_hash}")
+    logging.debug(f"Computed hash: {compute_hash(encrypted_message)}")
 
     computed_hash = compute_hash(encrypted_message)
     if received_hash != computed_hash:
@@ -260,7 +266,7 @@ def send_message():
     if not get_client(recipient):
         return jsonify({"status": "error", "message": "Recipient not found."}), 404
 
-    store_message(sender, recipient, encrypted_message, signature, received_hash)
+    store_message(sender, recipient, b64encode(encrypted_message).decode(), b64encode(signature).decode(), received_hash)
     logging.debug(f"Message from {sender} to {recipient} successfully stored.")
     return jsonify({"status": "success", "message": "Message stored successfully."})
 
@@ -272,10 +278,27 @@ def get_messages():
     mark_messages_as_delivered(phone_number)
     return jsonify({"messages": messages})
 
-@app.route("/get-public-key", methods=["GET"])
+@app.route("/get-public-key", methods=["GET", "POST"])
 def get_public_key():
-    return jsonify({"public_key": SERVER_PUBLIC_KEY.export_key().decode()})
+    data = request.json if request.method == "POST" else request.args
+    phone_number = data.get("phone_number", "").strip()  # Handle both POST and GET
 
+    if not phone_number:  # No phone number provided, return server's public key
+        logging.debug("Returning server's public key.")
+        return jsonify({"public_key": SERVER_PUBLIC_KEY.export_key().decode()})
+
+    # If phone number is provided, return the client's public key
+    logging.debug(f"Received request for public key of {phone_number}")
+    client = get_client(phone_number)
+
+    if not client:
+        logging.error(f"Client {phone_number} not found.")
+        return jsonify({"status": "error", "message": "Client not found."}), 404
+
+    return jsonify({"public_key": client[0]})
+
+
+        
 # === SocketIO Events ===
 @socketio.on("register_online")
 def register_online(phone_number):
@@ -286,4 +309,4 @@ def register_offline(phone_number):
     emit("status", {"message": f"{phone_number} is offline."}, broadcast=True)
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=5002)
+    socketio.run(app, host="0.0.0.0", port=21)
