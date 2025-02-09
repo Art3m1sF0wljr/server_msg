@@ -17,7 +17,7 @@ import binascii
 # === Flask & SocketIO Initialization ===
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'supersecret'
-app.config['DEBUG'] = True
+app.config['DEBUG'] = False
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # === Logging Setup ===
