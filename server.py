@@ -240,8 +240,14 @@ def verify():
     h = SHA256.new(decrypted_response.encode())
     try:
         pkcs1_15.new(client_public_key).verify(h, signature)
-        mark_messages_as_delivered(phone_number)
-        return jsonify({"status": "success", "message": "Authentication successful."})
+
+        # Check for undelivered messages
+        undelivered_count = len(get_undelivered_messages(phone_number))
+        return jsonify({
+            "status": "success",
+            "message": "Authentication successful.",
+            "undelivered_count": undelivered_count
+        })
     except (ValueError, TypeError):
         return jsonify({"status": "error", "message": "Signature verification failed."}), 401
 
@@ -275,7 +281,10 @@ def get_messages():
     data = request.json
     phone_number = data.get("phone_number")
     messages = get_undelivered_messages(phone_number)
+
+    # Mark messages as delivered after fetching them
     mark_messages_as_delivered(phone_number)
+
     return jsonify({"messages": messages})
 
 @app.route("/get-public-key", methods=["GET", "POST"])
