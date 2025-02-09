@@ -16,7 +16,7 @@ import binascii
 
 # === Flask & SocketIO Initialization ===
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '' #insert strong random key bruh
+app.config['SECRET_KEY'] = os.urandom(64) #insert strong random key bruh
 app.config['DEBUG'] = False
 socketio = SocketIO(app, cors_allowed_origins="*")
 
